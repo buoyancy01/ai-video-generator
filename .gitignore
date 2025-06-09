@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python/
+env/
+venv/
+*.env # Ignore local .env files used for development
+.idea/
+.vscode/
+
+# Node.js
+node_modules/
+build/
+.DS_Store
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.next/
+dist/ # Vite's default build output directory for frontend
+
+# Uploaded files
+uploads/ # Ignore the directory where product images are temporarily saved
