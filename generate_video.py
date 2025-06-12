@@ -3,21 +3,23 @@ import requests
 import base64
 import time
 import uuid
+from PIL import Image
+import io
+
 
 AZURE_TTS_KEY = os.getenv("AZURE_TTS_KEY")
 AZURE_TTS_REGION = os.getenv("AZURE_TTS_REGION")
 D_ID_API_KEY = os.getenv("D_ID_API_KEY")
 
-from PIL import Image
-import io
-
 def preprocess_image(image_bytes):
-    """Convert to RGB, resize to 512x512, and remove transparency if present."""
-    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    image = image.resize((512, 512))
-    byte_arr = io.BytesIO()
-    image.save(byte_arr, format="PNG")
-    return byte_arr.getvalue()
+    """
+    Converts any image (e.g. PNG with transparency) to JPEG to ensure D-ID compatibility.
+    """
+    with Image.open(io.BytesIO(image_bytes)) as img:
+        rgb_image = img.convert("RGB")  # Convert RGBA/others to RGB
+        output_buffer = io.BytesIO()
+        rgb_image.save(output_buffer, format="JPEG")
+        return output_buffer.getvalue()
 
 
 def generate_azure_tts(script: str, voice: str = "en-US-AriaNeural") -> str:
@@ -66,27 +68,40 @@ def upload_to_tmpfiles(file_path: str) -> str:
         return response.json()['data']['url']
 
 
-def create_did_talk(image_bytes: bytes, audio_url: str) -> str:
+def create_did_talk(image_bytes, audio_url):
+    """
+    Sends the image and audio to D-ID to create a talking video.
+    """
     headers = {
-        "Authorization": f"Basic {D_ID_API_KEY}",
-        "Content-Type": "application/json"
+        "Authorization": f"Bearer {os.getenv('D_ID_API_KEY')}"
     }
 
-    base64_image = base64.b64encode(image_bytes).decode("utf-8")
+    # Preprocess image to ensure JPEG format
+    jpeg_bytes = preprocess_image(image_bytes)
 
-    payload = {
+    files = {
+        "source_image": ("image.jpg", jpeg_bytes, "image/jpeg")
+    }
+
+    data = {
         "script": {
             "type": "audio",
             "audio_url": audio_url
-        },
-        "driver_url": "data:image/jpeg;base64," + base64_image
+        }
     }
 
-    response = requests.post("https://api.d-id.com/talks", json=payload, headers=headers)
+    response = requests.post(
+        "https://api.d-id.com/talks",
+        headers=headers,
+        files=files,
+        data={"script": json.dumps(data["script"])}
+    )
+
     if response.status_code != 200:
         raise Exception(f"D-ID error: {response.json()}")
-    
+
     return response.json()["id"]
+
 
 
 def check_talk_status(talk_id: str) -> str:
