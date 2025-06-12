@@ -11,7 +11,7 @@ async def generate(file: UploadFile, script: str = Form(...)):
         raw_image = await file.read()
         image_bytes = preprocess_image(raw_image)  # Ensure compatibility with D-ID (JPEG format, etc.)
 
-        audio_url = generate_tts(script)
+        audio_url = generate_azure_tts(script)
         talk_id = create_did_talk(image_bytes, audio_url)
 
         video_url = check_talk_status(talk_id)
