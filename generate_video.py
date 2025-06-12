@@ -5,6 +5,8 @@ import time
 import uuid
 from PIL import Image
 import io
+import json
+
 
 
 AZURE_TTS_KEY = os.getenv("AZURE_TTS_KEY")
