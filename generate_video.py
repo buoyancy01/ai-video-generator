@@ -8,6 +8,17 @@ AZURE_TTS_KEY = os.getenv("AZURE_TTS_KEY")
 AZURE_TTS_REGION = os.getenv("AZURE_TTS_REGION")
 D_ID_API_KEY = os.getenv("D_ID_API_KEY")
 
+from PIL import Image
+import io
+
+def preprocess_image(image_bytes):
+    """Convert to RGB, resize to 512x512, and remove transparency if present."""
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    image = image.resize((512, 512))
+    byte_arr = io.BytesIO()
+    image.save(byte_arr, format="PNG")
+    return byte_arr.getvalue()
+
 
 def generate_azure_tts(script: str, voice: str = "en-US-AriaNeural") -> str:
     # Generate audio using Azure TTS and return a temporary audio file path
