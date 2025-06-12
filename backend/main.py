@@ -1,18 +1,19 @@
 from fastapi import FastAPI, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from generate_video import generate_ai_video # <--- FIXED: Removed the leading dot for absolute import
+
+# FIXED: Use relative import with full file path to avoid circular or incorrect import errors
+from backend.generate_video import generate_ai_video
+
 import shutil
 import os
 
 app = FastAPI()
 
-# IMPORTANT: During development, allow_origins=["*"] is fine.
-# For production, replace "*" with your Vercel frontend URL, e.g.,
-# allow_origins=["https://your-frontend-name.vercel.app"]
+# Allow all CORS (update with your Vercel domain for production)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Will be updated for production later
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -26,7 +27,7 @@ async def generate(file: UploadFile, script: str = Form(...)):
     if not file.filename:
         raise HTTPException(status_code=400, detail="No file uploaded")
 
-    # Sanitize filename to prevent directory traversal issues
+    # Sanitize filename
     filename = os.path.join(UPLOAD_DIR, os.path.basename(file.filename))
 
     try:
@@ -37,12 +38,11 @@ async def generate(file: UploadFile, script: str = Form(...)):
 
     try:
         output_url = generate_ai_video(image_path=filename, script_text=script)
-        if not output_url or "Error" in output_url: # Check for error string or None
-            raise HTTPException(status_code=500, detail=output_url if output_url else "Video generation failed")
+        if not output_url or "Error" in str(output_url):
+            raise HTTPException(status_code=500, detail=output_url or "Video generation failed")
         return JSONResponse({"video_url": output_url})
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Video generation internal error: {e}: {e}")
+        raise HTTPException(status_code=500, detail=f"Video generation internal error: {e}")
     finally:
-        # Clean up the uploaded file after processing
         if os.path.exists(filename):
             os.remove(filename)
