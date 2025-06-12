@@ -1,8 +1,7 @@
 from fastapi import FastAPI, UploadFile, Form
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from generate_video import generate_tts, create_did_talk, check_talk_status
-
+from generate_video import generate_tts, create_did_talk
 app = FastAPI()
 
 # CORS
