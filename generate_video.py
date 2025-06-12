@@ -4,7 +4,7 @@ import base64
 import asyncio
 
 # Read API keys from environment variables (Render)
-D_ID_API_KEY = os.environ["D_ID_API_KEY"]
+DID_API_KEY = os.environ["D_ID_API_KEY"]
 PLAYHT_API_KEY = os.environ["PLAYHT_API_KEY"]
 PLAYHT_USER_ID = os.environ["PLAYHT_USER_ID"]
 
