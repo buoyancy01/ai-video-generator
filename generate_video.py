@@ -1,79 +1,66 @@
-# generate_video.py
-
 import os
-import requests
-import time
+import aiohttp
+import base64
+import asyncio
 
-PLAYHT_API_KEY = os.getenv("PLAYHT_API_KEY")
-PLAYHT_USER_ID = os.getenv("PLAYHT_USER_ID")
-DID_API_KEY = os.getenv("DID_API_KEY")
+# Read API keys from environment variables (Render)
+D_ID_API_KEY = os.environ["D_ID_API_KEY"]
+PLAYHT_API_KEY = os.environ["PLAYHT_API_KEY"]
+PLAYHT_USER_ID = os.environ["PLAYHT_USER_ID"]
 
-def generate_playht_audio(script_text: str) -> str:
-    """Generates audio from script using Play.ht and returns audio URL."""
+async def generate_tts(script: str) -> str:
+    """Generate audio from script using Play.ht and return the audio URL."""
+    url = "https://api.play.ht/api/v2/tts"
     headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
         "Authorization": f"Bearer {PLAYHT_API_KEY}",
-        "X-User-Id": PLAYHT_USER_ID,
-        "Content-Type": "application/json",
+        "X-USER-ID": PLAYHT_USER_ID
     }
-    body = {
-        "voice": "en-US-Wavenet-J",
-        "content": [script_text],
-        "title": "Product Script",
+    payload = {
+        "text": script,
+        "voice": "en-US-JennyNeural",
+        "output_format": "mp3"
     }
 
-    response = requests.post("https://api.play.ht/api/v2/tts", headers=headers, json=body)
-    if response.status_code != 201:
-        raise Exception(f"Error generating audio: {response.status_code}: {response.text}")
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as res:
+            data = await res.json()
+            if "url" not in data:
+                raise Exception(f"Play.ht TTS failed: {data}")
+            return data["url"]
 
-    transcription_id = response.json()["id"]
-
-    # Wait for generation
-    audio_url = None
-    for _ in range(30):  # max 30 seconds wait
-        poll = requests.get(f"https://api.play.ht/api/v2/tts/{transcription_id}", headers=headers)
-        if poll.status_code == 200 and poll.json().get("audioUrl"):
-            audio_url = poll.json()["audioUrl"]
-            break
-        time.sleep(2)
-
-    if not audio_url:
-        raise Exception("Audio generation timed out.")
-
-    return audio_url
-
-
-def generate_ai_video(script_text: str) -> str:
-    """Generates a video with a talking avatar and returns video URL."""
-    # Step 1: Generate audio
-    audio_url = generate_playht_audio(script_text)
-
-    # Step 2: Generate avatar video using D-ID
+async def create_did_talk(image_bytes: bytes, audio_url: str) -> str:
+    """Send image and audio to D-ID and return the talk_id."""
+    base64_img = base64.b64encode(image_bytes).decode("utf-8")
+    url = "https://api.d-id.com/talks"
     headers = {
-        "Authorization": f"Bearer {DID_API_KEY}",
+        "Authorization": f"Bearer {D_ID_API_KEY}",
         "Content-Type": "application/json"
     }
-
     payload = {
         "script": {
             "type": "audio",
             "audio_url": audio_url
         },
-        "source_url": "https://create-images-results.d-id.com/DefaultPresenters/Noelle-Hi.png"
+        "source_image": base64_img
     }
 
-    response = requests.post("https://api.d-id.com/talks", json=payload, headers=headers)
-    if response.status_code != 200:
-        raise Exception(f"D-ID video generation error: {response.status_code}: {response.text}")
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, json=payload, headers=headers) as res:
+            data = await res.json()
+            if "id" not in data:
+                raise Exception(f"D-ID error: {data}")
+            return data["id"]
 
-    talk_id = response.json()["id"]
+async def check_talk_status(talk_id: str) -> str:
+    """Check D-ID video status and return the video URL if ready."""
+    url = f"https://api.d-id.com/talks/{talk_id}"
+    headers = {
+        "Authorization": f"Bearer {D_ID_API_KEY}"
+    }
 
-    # Poll for video readiness
-    for _ in range(30):
-        result = requests.get(f"https://api.d-id.com/talks/{talk_id}", headers=headers)
-        if result.status_code == 200:
-            result_data = result.json()
-            if result_data.get("result_url"):
-                return result_data["result_url"]
-        time.sleep(2)
-
-    raise Exception("D-ID video generation timed out.")
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as res:
+            data = await res.json()
+            return data.get("result_url", None)
