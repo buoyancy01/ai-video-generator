@@ -4,7 +4,7 @@ import aiohttp
 import base64
 import tempfile
 
-D_ID_API_KEY = os.environ["DID_API_KEY"]
+D_ID_API_KEY = os.environ["D_ID_API_KEY"]
 AZURE_TTS_KEY = os.environ["AZURE_TTS_KEY"]
 AZURE_TTS_REGION = os.environ["AZURE_TTS_REGION"]
 
@@ -35,7 +35,7 @@ async def create_did_talk(image_bytes: bytes, audio_bytes: bytes) -> str:
     base64_audio = base64.b64encode(audio_bytes).decode("utf-8")
     url = "https://api.d-id.com/talks"
     headers = {
-        "Authorization": f"Bearer {D_ID_API_KEY}",
+        "Authorization": f"Basic {D_ID_API_KEY}",
         "Content-Type": "application/json"
     }
     payload = {
