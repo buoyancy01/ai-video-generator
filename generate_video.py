@@ -1,76 +1,96 @@
-# generate_video.py
 import os
-import aiohttp
+import requests
 import base64
-import tempfile
+import time
+import uuid
+
+AZURE_TTS_KEY = os.getenv("AZURE_TTS_KEY")
+AZURE_TTS_REGION = os.getenv("AZURE_TTS_REGION")
+D_ID_API_KEY = os.getenv("D_ID_API_KEY")
 
 
-D_ID_API_KEY = os.environ["D_ID_API_KEY"]
-AZURE_TTS_KEY = os.environ["AZURE_TTS_KEY"]
-AZURE_TTS_REGION = os.environ["AZURE_TTS_REGION"]
-
-print("D_ID_API_KEY is:", D_ID_API_KEY[:5])  # Only print partial key for security
-
-
-async def generate_tts(script: str) -> bytes:
-    url = f"https://{AZURE_TTS_REGION}.tts.speech.microsoft.com/cognitiveservices/v1"
+def generate_azure_tts(script: str, voice: str = "en-US-AriaNeural") -> str:
+    # Generate audio using Azure TTS and return a temporary audio file path
+    token_url = f"https://{AZURE_TTS_REGION}.api.cognitive.microsoft.com/sts/v1.0/issueToken"
     headers = {
         "Ocp-Apim-Subscription-Key": AZURE_TTS_KEY,
-        "Content-Type": "application/ssml+xml",
-        "X-Microsoft-OutputFormat": "audio-16khz-128kbitrate-mono-mp3",
-        "User-Agent": "AI-Video-Generator"
+        "Content-Length": "0"
     }
+    token_response = requests.post(token_url, headers=headers)
+    if token_response.status_code != 200:
+        raise Exception(f"Azure token error: {token_response.text}")
+    
+    access_token = token_response.text
+
+    tts_url = f"https://{AZURE_TTS_REGION}.tts.speech.microsoft.com/cognitiveservices/v1"
+    tts_headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/ssml+xml",
+        "X-Microsoft-OutputFormat": "audio-16khz-32kbitrate-mono-mp3"
+    }
+
     ssml = f"""
     <speak version='1.0' xml:lang='en-US'>
-      <voice name='en-US-JennyNeural'>
-        {script}
-      </voice>
+        <voice xml:lang='en-US' name='{voice}'>{script}</voice>
     </speak>
     """
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, data=ssml.encode("utf-8"), headers=headers) as res:
-            if res.status != 200:
-                error_text = await res.text()
-                raise Exception(f"Azure TTS failed: {error_text}")
-            return await res.read()
 
-async def create_did_talk(image_bytes: bytes, audio_bytes: bytes) -> str:
-    base64_img = base64.b64encode(image_bytes).decode("utf-8")
-    base64_audio = base64.b64encode(audio_bytes).decode("utf-8")
-    url = "https://api.d-id.com/talks"
+    response = requests.post(tts_url, headers=tts_headers, data=ssml.encode('utf-8'))
+    if response.status_code != 200:
+        raise Exception(f"Azure TTS error: {response.text}")
+
+    filename = f"audio_{uuid.uuid4().hex}.mp3"
+    with open(filename, "wb") as f:
+        f.write(response.content)
+
+    return filename
+
+
+def upload_to_tmpfiles(file_path: str) -> str:
+    with open(file_path, 'rb') as f:
+        files = {'file': (os.path.basename(file_path), f)}
+        response = requests.post('https://tmpfiles.org/api/v1/upload', files=files)
+        if response.status_code != 200:
+            raise Exception("Failed to upload audio to tmpfiles")
+        return response.json()['data']['url']
+
+
+def create_did_talk(image_bytes: bytes, audio_url: str) -> str:
     headers = {
         "Authorization": f"Basic {D_ID_API_KEY}",
         "Content-Type": "application/json"
     }
+
+    base64_image = base64.b64encode(image_bytes).decode("utf-8")
+
     payload = {
         "script": {
             "type": "audio",
-            "audio": base64_audio
+            "audio_url": audio_url
         },
-        "source_image": base64_img
+        "driver_url": "data:image/jpeg;base64," + base64_image
     }
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=payload, headers=headers) as res:
-            data = await res.json()
-            if "id" not in data:
-                raise Exception(f"D-ID error: {data}")
-            return data["id"]
 
-async def poll_did_video(talk_id: str) -> str:
-    url = f"https://api.d-id.com/talks/{talk_id}"
-    headers = {"Authorization": f"Bearer {D_ID_API_KEY}"}
-    for _ in range(30):
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as res:
-                data = await res.json()
-                if data.get("result_url"):
-                    return data["result_url"]
-        await asyncio.sleep(2)
-    raise Exception("Timeout: D-ID video generation failed.")
-
-async def generate_ai_video(image_bytes: bytes, script: str) -> str:
-    audio_bytes = await generate_tts(script)
-    talk_id = await create_did_talk(image_bytes, audio_bytes)
-    video_url = await poll_did_video(talk_id)
-    return video_url
+    response = requests.post("https://api.d-id.com/talks", json=payload, headers=headers)
+    if response.status_code != 200:
+        raise Exception(f"D-ID error: {response.json()}")
     
+    return response.json()["id"]
+
+
+def check_talk_status(talk_id: str) -> str:
+    headers = {
+        "Authorization": f"Basic {D_ID_API_KEY}"
+    }
+
+    for _ in range(30):
+        response = requests.get(f"https://api.d-id.com/talks/{talk_id}", headers=headers)
+        data = response.json()
+        if response.status_code != 200:
+            raise Exception(f"D-ID status check failed: {data}")
+        result_url = data.get("result_url")
+        if result_url:
+            return result_url
+        time.sleep(2)
+
+    raise Exception("Video generation timed out")
