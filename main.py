@@ -1,7 +1,7 @@
 from fastapi import FastAPI, UploadFile, Form
 from fastapi.responses import JSONResponse
 import os
-from generate_video import generate_tts, create_did_talk, check_talk_status, preprocess_image
+from generate_video import generate_azure_tts, create_did_talk, check_talk_status, preprocess_image
 
 app = FastAPI()
 
