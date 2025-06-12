@@ -4,9 +4,13 @@ import aiohttp
 import base64
 import tempfile
 
+
 D_ID_API_KEY = os.environ["D_ID_API_KEY"]
 AZURE_TTS_KEY = os.environ["AZURE_TTS_KEY"]
 AZURE_TTS_REGION = os.environ["AZURE_TTS_REGION"]
+
+print("D_ID_API_KEY is:", D_ID_API_KEY[:5])  # Only print partial key for security
+
 
 async def generate_tts(script: str) -> bytes:
     url = f"https://{AZURE_TTS_REGION}.tts.speech.microsoft.com/cognitiveservices/v1"
@@ -69,3 +73,4 @@ async def generate_ai_video(image_bytes: bytes, script: str) -> str:
     talk_id = await create_did_talk(image_bytes, audio_bytes)
     video_url = await poll_did_video(talk_id)
     return video_url
+    
