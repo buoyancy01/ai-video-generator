@@ -19,3 +19,12 @@ async def generate(file: UploadFile, script: str = Form(...)):
         return {"video_url": video_url}
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
+@app.get("/verify")
+async def verify_credentials():
+    """Endpoint to verify environment setup"""
+    return {
+        "D_ID_KEY_SET": bool(os.getenv("D_ID_API_KEY")),
+        "AZURE_KEY_SET": bool(os.getenv("AZURE_TTS_KEY")),
+        "AZURE_REGION": os.getenv("AZURE_TTS_REGION", "NOT SET"),
+        "RENDER_INSTANCE": os.getenv("RENDER_INSTANCE_ID", "LOCAL")
+    }
