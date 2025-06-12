@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 # FIXED: Use relative import with full file path to avoid circular or incorrect import errors
-from backend.generate_video import generate_ai_video
+from generate_video import generate_ai_video
 
 import shutil
 import os
