@@ -4,7 +4,7 @@ import aiohttp
 import base64
 import tempfile
 
-D_ID_API_KEY = os.environ["D_ID_API_KEY"]
+D_ID_API_KEY = os.environ["DID_API_KEY"]
 AZURE_TTS_KEY = os.environ["AZURE_TTS_KEY"]
 AZURE_TTS_REGION = os.environ["AZURE_TTS_REGION"]
 
