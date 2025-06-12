@@ -15,8 +15,8 @@ app.add_middleware(
 
 @app.post("/generate")
 async def generate(file: UploadFile, script: str = Form(...)):
-    image_bytes = await file.read()
-
+    raw_image = file.file.read()
+    image_bytes = preprocess_image(raw_image)
     audio_path = generate_azure_tts(script)
     audio_url = upload_to_tmpfiles(audio_path)
 
