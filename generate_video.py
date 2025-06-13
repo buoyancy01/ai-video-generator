@@ -6,10 +6,14 @@ from PIL import Image
 import io
 import json
 
-# Load environment variables
+# Load environment variables with validation
 AZURE_TTS_KEY = os.getenv("AZURE_TTS_KEY")
 AZURE_TTS_REGION = os.getenv("AZURE_TTS_REGION")
 D_ID_API_KEY = os.getenv("D_ID_API_KEY")
+D_ID_REGION = os.getenv("D_ID_REGION", "global")  # global or eu
+
+# Determine D-ID base URL based on region
+D_ID_BASE_URL = "https://api.d-id.com" if D_ID_REGION == "global" else "https://eu-api.d-id.com"
 
 def preprocess_image(image_bytes):
     """Converts image to JPEG for D-ID compatibility"""
@@ -32,6 +36,8 @@ def generate_azure_tts(script: str, voice: str = "en-US-AriaNeural") -> str:
     
     # Generate speech
     tts_url = f"https://{AZURE_TTS_REGION}.tts.speech.microsoft.com/cognitiveservices/v1"
+    ssml = f"<speak version='1.0' xml:lang='en-US'><voice name='{voice}'>{script}</voice></speak>"
+    
     response = requests.post(
         tts_url,
         headers={
@@ -39,7 +45,7 @@ def generate_azure_tts(script: str, voice: str = "en-US-AriaNeural") -> str:
             "Content-Type": "application/ssml+xml",
             "X-Microsoft-OutputFormat": "audio-16khz-32kbitrate-mono-mp3"
         },
-        data=f"<speak version='1.0' xml:lang='en-US'><voice name='{voice}'>{script}</voice></speak>"
+        data=ssml.encode('utf-8')
     )
     response.raise_for_status()
     
@@ -55,59 +61,79 @@ def upload_to_tmpfiles(file_path: str) -> str:
     try:
         with open(file_path, 'rb') as f:
             response = requests.post(
-                'https://tmpfiles.org/api/v1/upload',
+                'https://file.io',
                 files={'file': (os.path.basename(file_path), f)}
             )
         response.raise_for_status()
-        return response.json()['data']['url']
+        return response.json()['link']
     finally:
-        os.remove(file_path)  # Clean up regardless of success
+        try:
+            os.remove(file_path)  # Clean up
+        except:
+            pass
 
 def create_did_talk(image_bytes, audio_url):
-    """Create D-ID talk with enhanced error handling"""
-    headers = {"Authorization": f"Bearer {D_ID_API_KEY}"}
+    """Create D-ID talk with enhanced authentication"""
+    headers = {
+        "Authorization": f"Bearer {D_ID_API_KEY}",
+        "Content-Type": "multipart/form-data"
+    }
     
-    # Debug: Log API key (masked) and audio URL
-    print(f"D-ID API Key: {D_ID_API_KEY[:5]}...{D_ID_API_KEY[-3:]}")
-    print(f"Audio URL: {audio_url}")
+    # Create form data payload
+    files = {
+        "source_image": ("image.jpg", image_bytes, "image/jpeg")
+    }
+    
+    data = {
+        "script": json.dumps({
+            "type": "audio",
+            "audio_url": audio_url,
+            "subtitles": False
+        })
+    }
     
     try:
         response = requests.post(
-            "https://api.d-id.com/talks",
+            f"{D_ID_BASE_URL}/talks",
             headers=headers,
-            files={"source_image": ("image.jpg", image_bytes, "image/jpeg")},
-            data={"script": json.dumps({"type": "audio", "audio_url": audio_url})}
+            files=files,
+            data=data
         )
         
-        # Capture detailed error info
-        if response.status_code != 201:
-            error_details = {
-                "status": response.status_code,
-                "headers": dict(response.headers),
-                "response": response.text
-            }
-            raise Exception(f"D-ID API Error: {json.dumps(error_details)}")
-            
+        if response.status_code == 401:
+            # Special handling for authentication issues
+            raise Exception(f"D-ID Authentication Failed: Check API Key and Region")
+        
+        response.raise_for_status()
         return response.json()["id"]
-    except Exception as e:
-        raise Exception(f"Failed to create talk: {str(e)}")
+    except requests.exceptions.RequestException as e:
+        error_details = {
+            "status": e.response.status_code if e.response else "No response",
+            "error": str(e),
+            "response": e.response.text if e.response else None
+        }
+        raise Exception(f"D-ID API Error: {json.dumps(error_details)}")
 
 def check_talk_status(talk_id: str) -> str:
     """Check talk status with proper authentication"""
     headers = {"Authorization": f"Bearer {D_ID_API_KEY}"}
     
-    for i in range(30):
-        response = requests.get(
-            f"https://api.d-id.com/talks/{talk_id}",
-            headers=headers
-        )
-        
-        if response.status_code == 200:
+    for i in range(30):  # Check for 60 seconds max
+        try:
+            response = requests.get(
+                f"{D_ID_BASE_URL}/talks/{talk_id}",
+                headers=headers
+            )
+            response.raise_for_status()
             data = response.json()
+            
             if data.get("status") == "done" and data.get("result_url"):
                 return data["result_url"]
+                
+            print(f"Check #{i+1}: Status {data.get('status')}")
+        except requests.exceptions.RequestException as e:
+            print(f"Status check error: {str(e)}")
         
-        print(f"Check #{i+1}: Status {response.status_code}")
         time.sleep(2)
     
     raise Exception("Video generation timed out after 60 seconds")
