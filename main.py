@@ -32,7 +32,7 @@ async def verify_credentials():
         "RENDER_INSTANCE": os.getenv("RENDER_INSTANCE_ID", "LOCAL")
     }
     
-    # Test D-ID authentication
+    # Test D-ID authentication carefully
     try:
         headers = {"Authorization": f"Bearer {os.getenv('D_ID_API_KEY')}"}
         response = requests.get(f"{os.getenv('D_ID_BASE_URL', 'https://api.d-id.com')}/credentials", 
@@ -61,4 +61,8 @@ async def test_endpoint():
         video_url = check_talk_status(talk_id)
         return RedirectResponse(url=video_url)
     except Exception as e:
+<<<<<<< HEAD
         return JSONResponse(status_code=500, content={"error": str(e)})
+=======
+        return JSONResponse(status_code=500, content={"error": str(e)})
+>>>>>>> abcb97529015d9d4639dfd13369881571f2321ae

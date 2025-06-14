@@ -6,7 +6,7 @@ from PIL import Image
 import io
 import json
 
-# Load environment variables with validation
+# Load environment variables with validation carefully
 AZURE_TTS_KEY = os.getenv("AZURE_TTS_KEY")
 AZURE_TTS_REGION = os.getenv("AZURE_TTS_REGION")
 D_ID_API_KEY = os.getenv("D_ID_API_KEY")
@@ -136,4 +136,8 @@ def check_talk_status(talk_id: str) -> str:
         
         time.sleep(2)
     
+<<<<<<< HEAD
     raise Exception("Video generation timed out after 60 seconds")
+=======
+    raise Exception("Video generation timed out after 60 seconds")
+>>>>>>> abcb97529015d9d4639dfd13369881571f2321ae
