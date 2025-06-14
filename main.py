@@ -61,8 +61,6 @@ async def test_endpoint():
         video_url = check_talk_status(talk_id)
         return RedirectResponse(url=video_url)
     except Exception as e:
-<<<<<<< HEAD
         return JSONResponse(status_code=500, content={"error": str(e)})
-=======
         return JSONResponse(status_code=500, content={"error": str(e)})
->>>>>>> abcb97529015d9d4639dfd13369881571f2321ae
+        
