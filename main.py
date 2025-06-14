@@ -49,7 +49,7 @@ async def verify_credentials():
 
 @app.get("/test")
 async def test_endpoint():
-    """Full test flow with sample data"""
+    """Full test flow with sample data image"""
     try:
         # Use a sample image from your project
         with open("sample_image.jpg", "rb") as f:
