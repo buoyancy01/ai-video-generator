@@ -12,7 +12,7 @@ export default function App() {
   // --- IMPORTANT: This will be updated with your actual Render backend URL after deployment ---
   // Temporarily, you can leave it as "YOUR_RENDER_BACKEND_URL" for the initial GitHub push.
   // You will update this EXACT string with the URL provided by Render AFTER your backend deploys.
-  const BACKEND_URL = "YOUR_RENDER_BACKEND_URL"; // Example: "https://ai-video-generator-backend.onrender.com"
+  const BACKEND_URL = "https://ai-video-generator-wrfb.onrender.com"; // Example: "https://ai-video-generator-backend.onrender.com"
 
   const handleSubmit = async (e) => {
     e.preventDefault();
