@@ -1,95 +1,87 @@
-from fastapi import FastAPI, UploadFile, Form
-from fastapi.responses import JSONResponse, RedirectResponse
 import os
-import logging
-from generate_video import generate_azure_tts, create_did_talk, check_talk_status, preprocess_image
+import time
+import requests
+from fastapi import FastAPI, Form, UploadFile, File
+from fastapi.responses import JSONResponse, FileResponse
+from PIL import Image
+import tempfile
+
+# Set your HeyGen API key in Render Environment Variables
+HEYGEN_API_KEY = os.getenv("HEYGEN_API_KEY")
 
 app = FastAPI()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("api")
 
-@app.post("/generate")
-async def generate(file: UploadFile, script: str = Form(...)):
-    """Main endpoint for video generation"""
-    try:
-        logger.info(f"Starting generation for script: {script[:50]}...")
-        
-        raw_image = await file.read()
-        logger.info(f"Received image: {len(raw_image)} bytes")
-        
-        image_bytes = preprocess_image(raw_image)
-        logger.info("Image preprocessed")
-        
-        audio_url = generate_azure_tts(script)
-        logger.info(f"Audio generated: {audio_url}")
-        
-        video_id = create_did_talk(image_bytes, audio_url)
-        logger.info(f"Video task created: {video_id}")
-        
-        video_url = check_talk_status(video_id)
-        logger.info(f"Video ready: {video_url}")
-        
-        return {"video_url": video_url}
-    except Exception as e:
-        logger.error(f"Generation failed: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={"error": str(e), "type": type(e).__name__}
-        )
+@app.post("/generate-video")
+async def generate_video(product: str = Form(...), script: str = Form(...), file: UploadFile = File(...)):
+    headers = {
+        "Authorization": f"Bearer {HEYGEN_API_KEY}",
+        "Content-Type": "application/json"
+    }
 
-@app.post("/generate_test")
-async def generate_test(script: str = Form(...)):
-    """Test endpoint with sample image"""
-    try:
-        logger.info(f"Test generation: {script[:50]}...")
-        
-        # Use a built-in sample image
-        with open("sample_image.jpg", "rb") as f:
-            image_bytes = preprocess_image(f.read())
-        
-        audio_url = generate_azure_tts(script)
-        video_id = create_did_talk(image_bytes, audio_url)
-        video_url = check_talk_status(video_id)
-        
-        return RedirectResponse(url=video_url)
-    except Exception as e:
-        logger.error(f"Test failed: {str(e)}")
-        return JSONResponse(
-            status_code=500,
-            content={"error": str(e), "type": type(e).__name__}
-        )
+    # Save and process uploaded image
+    product_image_path = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
+    with open(product_image_path, "wb") as img_file:
+        img_file.write(await file.read())
 
-@app.get("/verify")
-async def verify_credentials():
-    """Verify API credentials with detailed diagnostics"""
-    try:
-        creds = {
-            "HEYGEN_KEY": bool(HEYGEN_API_KEY),
-            "HEYGEN_KEY_LENGTH": len(HEYGEN_API_KEY) if HEYGEN_API_KEY else 0,
-            "AZURE_KEY_SET": bool(os.getenv("AZURE_TTS_KEY")),
-            "AZURE_REGION": os.getenv("AZURE_TTS_REGION", "NOT SET"),
+    # Resize and prepare background with avatar overlay
+    bg = Image.new("RGB", (1920, 1080), color="white")
+    product_img = Image.open(product_image_path).convert("RGBA")
+    product_img.thumbnail((600, 600))
+    bg.paste(product_img, (100, 240), product_img if product_img.mode == 'RGBA' else None)
+
+    composite_path = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
+    bg.save(composite_path)
+
+    # Upload the composite image to an image hosting service (you must configure this)
+    # Here we assume a dummy URL is returned for simplicity
+    composite_image_url = upload_to_imgbb(composite_path)  # You must define this function or upload method
+
+    # Use HeyGen API to create video with custom background
+    avatar_id = "b48e1a5d5e3a44ef9ce89f324c088cbc"  # Replace with a real avatar ID from HeyGen
+
+    create_payload = {
+        "avatar_id": avatar_id,
+        "script": {
+            "type": "text",
+            "input": script
+        },
+        "config": {
+            "output_quality": "1080p",
+            "background_image_url": composite_image_url  # Important: using generated composite background
         }
-        
-        # Test HeyGen authentication
-        headers = {"X-Api-Key": HEYGEN_API_KEY}
-        response = requests.get(
-            "https://api.heygen.com/v1/account",
-            headers=headers,
-            timeout=5
-        )
-        
-        creds["HEYGEN_STATUS"] = response.status_code
-        if response.status_code == 200:
-            creds["HEYGEN_CREDITS"] = response.json().get("data", {}).get("credits")
-        else:
-            creds["HEYGEN_RESPONSE"] = response.text[:200] + "..." if response.text else "Empty response"
-            
-        return creds
-    except Exception as e:
-        return {"error": str(e)}
+    }
 
-@app.get("/")
-async def health_check():
-    return {"status": "active", "service": "AI Video Generator"}
+    create_response = requests.post(
+        "https://api.heygen.com/v1/videos",
+        headers=headers,
+        json=create_payload
+    )
+
+    if create_response.status_code != 200:
+        return JSONResponse(status_code=500, content={"error": "Failed to create video", "details": create_response.json()})
+
+    video_id = create_response.json().get("video_id")
+
+    # Poll for video completion
+    status_url = f"https://api.heygen.com/v1/videos/{video_id}"
+    for _ in range(30):
+        time.sleep(3)
+        status_response = requests.get(status_url, headers=headers)
+        if status_response.status_code != 200:
+            continue
+
+        status_data = status_response.json()
+        if status_data.get("status") == "completed":
+            video_url = status_data.get("video_url")
+            break
+    else:
+        return JSONResponse(status_code=500, content={"error": "Video generation timed out"})
+
+    # Download and serve the video
+    video_response = requests.get(video_url)
+    temp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
+    with open(temp_path, "wb") as f:
+        f.write(video_response.content)
+
+    return FileResponse(temp_path, media_type="video/mp4", filename="marketing_video.mp4")
