@@ -4,23 +4,21 @@ import time
 import uuid
 from PIL import Image
 import io
-import json
 
-# Load environment variables with validation carefully
+# Load environment variables
 AZURE_TTS_KEY = os.getenv("AZURE_TTS_KEY")
 AZURE_TTS_REGION = os.getenv("AZURE_TTS_REGION")
-D_ID_API_KEY = os.getenv("D_ID_API_KEY")
-D_ID_REGION = os.getenv("D_ID_REGION", "global")  # global or eu
+HEYGEN_API_KEY = os.getenv("HEYGEN_API_KEY")
 
-# Determine D-ID base URL based on region
-D_ID_BASE_URL = "https://api.d-id.com" if D_ID_REGION == "global" else "https://eu-api.d-id.com"
+# HeyGen API endpoints
+HEYGEN_API_URL = "https://api.heygen.com/v1"
 
 def preprocess_image(image_bytes):
-    """Converts image to JPEG for D-ID compatibility"""
+    """Converts image to JPEG for compatibility"""
     with Image.open(io.BytesIO(image_bytes)) as img:
         rgb_image = img.convert("RGB")
         output_buffer = io.BytesIO()
-        rgb_image.save(output_buffer, format="JPEG")
+        rgb_image.save(output_buffer, format="JPEG", quality=95)
         return output_buffer.getvalue()
 
 def generate_azure_tts(script: str, voice: str = "en-US-AriaNeural") -> str:
@@ -59,6 +57,7 @@ def generate_azure_tts(script: str, voice: str = "en-US-AriaNeural") -> str:
 def upload_to_tmpfiles(file_path: str) -> str:
     """Uploads file to temporary hosting with error handling"""
     try:
+        # Use file.io for reliable hosting
         with open(file_path, 'rb') as f:
             response = requests.post(
                 'https://file.io',
@@ -73,67 +72,106 @@ def upload_to_tmpfiles(file_path: str) -> str:
             pass
 
 def create_did_talk(image_bytes, audio_url):
-    """Create D-ID talk with enhanced authentication"""
+    """Create HeyGen video with custom avatar"""
+    # Step 1: Create avatar from image
+    avatar_id = create_heygen_avatar(image_bytes)
+    
+    # Step 2: Generate video with avatar and audio
+    video_id = generate_heygen_video(avatar_id, audio_url)
+    
+    return video_id
+
+def create_heygen_avatar(image_bytes):
+    """Upload image to create custom avatar"""
+    headers = {"X-Api-Key": HEYGEN_API_KEY}
+    
+    # Send image to HeyGen
+    response = requests.post(
+        f"{HEYGEN_API_URL}/avatars",
+        headers=headers,
+        files={"file": ("avatar.jpg", image_bytes, "image/jpeg")}
+    )
+    
+    # Handle errors
+    if response.status_code != 200:
+        error_msg = response.json().get('error', {}).get('message', 'Unknown error')
+        raise Exception(f"HeyGen avatar creation failed: {error_msg}")
+    
+    return response.json()["data"]["avatar_id"]
+
+def generate_heygen_video(avatar_id, audio_url):
+    """Generate video with custom avatar and audio"""
     headers = {
-        "Authorization": f"Bearer {D_ID_API_KEY}",
-        "Content-Type": "multipart/form-data"
+        "X-Api-Key": HEYGEN_API_KEY,
+        "Content-Type": "application/json"
     }
     
-    # Create form data payload
-    files = {
-        "source_image": ("image.jpg", image_bytes, "image/jpeg")
+    # Video generation parameters
+    payload = {
+        "video_inputs": [{
+            "character": {
+                "type": "avatar",
+                "avatar_id": avatar_id,
+                "avatar_style": "normal"
+            },
+            "voice": {
+                "type": "audio",
+                "audio_url": audio_url
+            },
+            "background": {
+                "type": "color",
+                "value": "#FFFFFF"
+            }
+        }],
+        "test": True,  # Use free test mode
+        "aspect_ratio": "16:9",
+        "caption": False
     }
     
-    data = {
-        "script": json.dumps({
-            "type": "audio",
-            "audio_url": audio_url,
-            "subtitles": False
-        })
-    }
+    # Start video generation
+    response = requests.post(
+        f"{HEYGEN_API_URL}/video/generate",
+        headers=headers,
+        json=payload
+    )
     
-    try:
-        response = requests.post(
-            f"{D_ID_BASE_URL}/talks",
-            headers=headers,
-            files=files,
-            data=data
+    # Handle errors
+    if response.status_code != 200:
+        error_msg = response.json().get('error', {}).get('message', 'Unknown error')
+        raise Exception(f"HeyGen video creation failed: {error_msg}")
+    
+    return response.json()["data"]["video_id"]
+
+def check_talk_status(video_id):
+    """Check video status and return URL when ready"""
+    headers = {"X-Api-Key": HEYGEN_API_KEY}
+    
+    # Check status periodically (max 2 minutes)
+    for i in range(30):
+        response = requests.get(
+            f"{HEYGEN_API_URL}/video_status?video_id={video_id}",
+            headers=headers
         )
         
-        if response.status_code == 401:
-            # Special handling for authentication issues
-            raise Exception(f"D-ID Authentication Failed: Check API Key and Region")
+        # Handle errors
+        if response.status_code != 200:
+            time.sleep(2)
+            continue
         
-        response.raise_for_status()
-        return response.json()["id"]
-    except requests.exceptions.RequestException as e:
-        error_details = {
-            "status": e.response.status_code if e.response else "No response",
-            "error": str(e),
-            "response": e.response.text if e.response else None
-        }
-        raise Exception(f"D-ID API Error: {json.dumps(error_details)}")
-
-def check_talk_status(talk_id: str) -> str:
-    """Check talk status with proper authentication"""
-    headers = {"Authorization": f"Bearer {D_ID_API_KEY}"}
+        data = response.json()
+        status = data["data"].get("status")
+        
+        # Return URL when ready
+        if status == "completed":
+            return data["data"]["video_url"]
+        
+        # Handle failures
+        if status == "failed":
+            error = data["data"].get("error", "Unknown error")
+            raise Exception(f"Video generation failed: {error}")
+        
+        # Log progress
+        print(f"Video status: {status} (check {i+1}/30)")
+        time.sleep(4)
     
-    for i in range(30):  # Check for 60 seconds max (30 * 2-second sleep)
-        try:
-            response = requests.get(
-                f"{D_ID_BASE_URL}/talks/{talk_id}",
-                headers=headers
-            )
-            response.raise_for_status()
-            data = response.json()
-            
-            if data.get("status") == "done" and data.get("result_url"):
-                return data["result_url"]
-            
-            print(f"Check #{i+1}: Status {data.get('status')}")
-        except requests.exceptions.RequestException as e:
-            print(f"Status check error: {str(e)}")
-        
-        time.sleep(2)
-    # This line should be outside the try/except of the loop but still within the function
-    raise Exception("Video generation timed out after 60 seconds")
+    raise Exception("Video generation timed out after 2 minutes")
