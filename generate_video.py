@@ -118,7 +118,7 @@ def check_talk_status(talk_id: str) -> str:
     """Check talk status with proper authentication"""
     headers = {"Authorization": f"Bearer {D_ID_API_KEY}"}
     
-    for i in range(30):  # Check for 60 seconds max
+    for i in range(30):  # Check for 60 seconds max (30 * 2-second sleep)
         try:
             response = requests.get(
                 f"{D_ID_BASE_URL}/talks/{talk_id}",
@@ -129,15 +129,11 @@ def check_talk_status(talk_id: str) -> str:
             
             if data.get("status") == "done" and data.get("result_url"):
                 return data["result_url"]
-                
+            
             print(f"Check #{i+1}: Status {data.get('status')}")
         except requests.exceptions.RequestException as e:
             print(f"Status check error: {str(e)}")
         
         time.sleep(2)
-    
-<<<<<<< HEAD
+    # This line should be outside the try/except of the loop but still within the function
     raise Exception("Video generation timed out after 60 seconds")
-=======
-    raise Exception("Video generation timed out after 60 seconds")
->>>>>>> abcb97529015d9d4639dfd13369881571f2321ae
