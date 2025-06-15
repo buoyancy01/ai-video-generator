@@ -48,7 +48,7 @@ def upload_to_imgbb(image_path: str) -> str:
 def create_did_presentation(script: str, image_url: str) -> str:
     """Create a D-ID presentation and return the presentation ID"""
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f':{DID_API_KEY}'.encode()).decode()}",
+        "Authorization": f"Bearer {DID_API_KEY}",  # CORRECTED TO BEARER TOKEN
         "Content-Type": "application/json"
     }
     
@@ -64,8 +64,7 @@ def create_did_presentation(script: str, image_url: str) -> str:
         "config": {
             "result_format": "mp4"
         },
-        "source_url": image_url,
-        "webhook": ""  # Not needed for immediate sync
+        "source_url": image_url
     }
     
     response = requests.post(
@@ -82,7 +81,7 @@ def create_did_presentation(script: str, image_url: str) -> str:
 def get_did_video_url(presentation_id: str) -> str:
     """Get video URL from D-ID presentation"""
     headers = {
-        "Authorization": f"Basic {base64.b64encode(f':{DID_API_KEY}'.encode()).decode()}"
+        "Authorization": f"Bearer {DID_API_KEY}"  # CORRECTED TO BEARER TOKEN
     }
     
     for _ in range(30):  # 30 attempts * 3 seconds = 90 seconds timeout
@@ -138,9 +137,14 @@ async def generate_video(
         video_response = requests.get(video_url, stream=True)
         video_response.raise_for_status()
         
-        # Stream video directly to client
+        # Create a temporary file to store the video
+        temp_video_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
+        with open(temp_video_path, "wb") as f:
+            for chunk in video_response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        
         return FileResponse(
-            BytesIO(video_response.content),
+            temp_video_path,
             media_type="video/mp4",
             filename=f"{product.replace(' ', '_')}_video.mp4"
         )
@@ -149,3 +153,6 @@ async def generate_video(
             status_code=500,
             content={"error": f"Failed to download video: {str(e)}"}
         )
+    finally:
+        if temp_video_path and os.path.exists(temp_video_path):
+            os.remove(temp_video_path)
