@@ -5,8 +5,8 @@ from fastapi import FastAPI, Form, File, UploadFile
 from fastapi.responses import JSONResponse, FileResponse
 from PIL import Image
 import tempfile
-import io # Added for image handling, if needed elsewhere in Image.open(io.BytesIO(...))
-import json # Added, as you use json for error details
+import io
+import json
 
 # ENV VARS: HEYGEN_API_KEY and IMGBB_API_KEY
 HEYGEN_API_KEY = os.getenv("HEYGEN_API_KEY")
@@ -67,7 +67,7 @@ async def generate_video(
         if os.path.exists(composite_path):
             os.remove(composite_path)
 
-    # Step 2: Generate video with HeyGen
+    # Step 2: Generate video with HeyGen - UPDATED ENDPOINT AND PAYLOAD
     headers = {
         "Authorization": f"Bearer {HEYGEN_API_KEY}",
         "Content-Type": "application/json"
@@ -75,20 +75,23 @@ async def generate_video(
 
     avatar_id = "b48e1a5d5e3a44ef9ce89f324c088cbc"  # Your custom uploaded avatar
 
+    # UPDATED PAYLOAD STRUCTURE
     create_payload = {
         "avatar_id": avatar_id,
         "script": {
             "type": "text",
             "input": script
         },
-        "config": {
-            "output_quality": "1080p",
-            "background_url": composite_url
+        "video": {
+            "ratio": "16:9",            # REQUIRED FIELD
+            "background_url": composite_url,
+            "output_quality": "1080p"
         }
     }
 
+    # UPDATED ENDPOINT
     create_response = requests.post(
-        "https://api.heygen.com/v1/videos",
+        "https://api.heygen.com/v1/video/generate",  # CORRECTED ENDPOINT
         headers=headers,
         json=create_payload
     )
@@ -103,7 +106,8 @@ async def generate_video(
         return JSONResponse(status_code=500, content={"error": "Failed to create video", "details": details})
 
     video_id = create_response.json().get("video_id")
-    status_url = f"https://api.heygen.com/v1/videos/{video_id}"
+    # UPDATED STATUS ENDPOINT
+    status_url = f"https://api.heygen.com/v1/video/generate/{video_id}"  # CORRECTED STATUS URL
 
     video_url = None # Initialize video_url
     for _ in range(30): # Check for 90 seconds max (30 * 3-second sleep)
