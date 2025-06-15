@@ -1,41 +1,49 @@
 import os
 import time
 import requests
-import tempfile
-from fastapi import FastAPI, Form, UploadFile, File
+from fastapi import FastAPI, Form, File, UploadFile
 from fastapi.responses import JSONResponse, FileResponse
-from PIL import Image, ImageDraw
-from io import BytesIO
+from PIL import Image
+import tempfile
 
-# Set your HeyGen API key in Render Environment Variables
+# ENV VARS: HEYGEN_API_KEY and IMGBB_API_KEY
 HEYGEN_API_KEY = os.getenv("HEYGEN_API_KEY")
-IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")  # You must set this in your Render environment variables
+IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
 
 app = FastAPI()
 
-def create_background_with_product(product_image_bytes):
-    background = Image.new("RGB", (1920, 1080), (255, 255, 255))  # White background
-    product_image = Image.open(BytesIO(product_image_bytes)).convert("RGBA")
 
-    # Resize product image proportionally to fit nicely on the background
-    product_image.thumbnail((800, 800))
-    px, py = (int((1920 - product_image.width) / 2), int((1080 - product_image.height) / 2))
-    background.paste(product_image, (px, py), product_image)
+def merge_with_white_background(uploaded_file: UploadFile) -> str:
+    temp_input = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+    temp_input.write(uploaded_file.file.read())
+    temp_input.close()
 
-    # Save the result to bytes
-    output = BytesIO()
-    background.save(output, format="PNG")
-    output.seek(0)
-    return output
+    product_image = Image.open(temp_input.name).convert("RGBA")
+    bg = Image.new("RGBA", (1920, 1080), "white")
+    
+    # Resize product image to fit nicely in frame
+    max_width, max_height = 1000, 800
+    product_image.thumbnail((max_width, max_height))
 
-def upload_to_imgbb(image_bytes):
-    url = "https://api.imgbb.com/1/upload"
-    files = {'image': image_bytes.read()}
-    response = requests.post(url, params={"key": IMGBB_API_KEY}, files=files)
-    if response.status_code == 200:
-        return response.json()["data"]["url"]
-    else:
-        raise Exception("Image upload failed")
+    x = (bg.width - product_image.width) // 2
+    y = (bg.height - product_image.height) // 2
+    bg.paste(product_image, (x, y), product_image)
+
+    merged_path = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
+    bg.convert("RGB").save(merged_path, format="PNG")
+    return merged_path
+
+
+def upload_to_imgbb(image_path: str) -> str:
+    with open(image_path, "rb") as f:
+        response = requests.post(
+            "https://api.imgbb.com/1/upload",
+            params={"key": IMGBB_API_KEY},
+            files={"image": f}
+        )
+    response.raise_for_status()
+    return response.json()["data"]["url"]
+
 
 @app.post("/generate-video")
 async def generate_video(
@@ -43,67 +51,61 @@ async def generate_video(
     script: str = Form(...),
     file: UploadFile = File(...)
 ):
+    # Step 1: Merge product image with white background
+    composite_path = merge_with_white_background(file)
     try:
-        # Step 1: Create background image with product
-        image_bytes = await file.read()
-        composite = create_background_with_product(image_bytes)
-
-        # Step 2: Upload image to ImgBB
-        background_url = upload_to_imgbb(composite)
-
-        headers = {
-            "Authorization": f"Bearer {HEYGEN_API_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        avatar_id = "b48e1a5d5e3a44ef9ce89f324c088cbc"  # Your uploaded HeyGen avatar ID
-
-        # Step 3: Request HeyGen to create video
-        create_payload = {
-            "avatar_id": avatar_id,
-            "script": {
-                "type": "text",
-                "input": script
-            },
-            "config": {
-                "output_quality": "1080p",
-                "background": "green",
-                "background_url": background_url
-            }
-        }
-
-        create_response = requests.post(
-            "https://api.heygen.com/v1/videos",
-            headers=headers,
-            json=create_payload
-        )
-
-        if create_response.status_code != 200:
-            return JSONResponse(status_code=500, content={"error": "Failed to create video", "details": create_response.json()})
-
-        video_id = create_response.json().get("video_id")
-
-        # Step 4: Poll video status
-        status_url = f"https://api.heygen.com/v1/videos/{video_id}"
-        for _ in range(30):
-            time.sleep(3)
-            status_response = requests.get(status_url, headers=headers)
-            if status_response.status_code != 200:
-                continue
-            status_data = status_response.json()
-            if status_data.get("status") == "completed":
-                video_url = status_data.get("video_url")
-                break
-        else:
-            return JSONResponse(status_code=500, content={"error": "Video generation timed out"})
-
-        # Step 5: Download and return video
-        video_response = requests.get(video_url)
-        temp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
-        with open(temp_path, "wb") as f:
-            f.write(video_response.content)
-
-        return FileResponse(temp_path, media_type="video/mp4", filename="marketing_video.mp4")
-
+        composite_url = upload_to_imgbb(composite_path)
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content={"error": f"Image upload failed: {str(e)}"})
+
+    # Step 2: Generate video with HeyGen
+    headers = {
+        "Authorization": f"Bearer {HEYGEN_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    avatar_id = "b48e1a5d5e3a44ef9ce89f324c088cbc"  # Your custom uploaded avatar
+
+    create_payload = {
+        "avatar_id": avatar_id,
+        "script": {
+            "type": "text",
+            "input": script
+        },
+        "config": {
+            "output_quality": "1080p",
+            "background_url": composite_url
+        }
+    }
+
+    create_response = requests.post(
+        "https://api.heygen.com/v1/videos",
+        headers=headers,
+        json=create_payload
+    )
+
+    if create_response.status_code != 200:
+        return JSONResponse(status_code=500, content={"error": "Failed to create video", "details": create_response.json()})
+
+    video_id = create_response.json().get("video_id")
+    status_url = f"https://api.heygen.com/v1/videos/{video_id}"
+
+    for _ in range(30):
+        time.sleep(3)
+        status_response = requests.get(status_url, headers=headers)
+        if status_response.status_code != 200:
+            continue
+
+        status_data = status_response.json()
+        if status_data.get("status") == "completed":
+            video_url = status_data.get("video_url")
+            break
+    else:
+        return JSONResponse(status_code=500, content={"error": "Video generation timed out"})
+
+    video_response = requests.get(video_url)
+    temp_video_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
+    with open(temp_video_path, "wb") as f:
+        f.write(video_response.content)
+
+    return FileResponse(temp_video_path, media_type="video/mp4", filename="marketing_video.mp4")
