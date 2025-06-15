@@ -7,3 +7,4 @@ Pillow
 moviepy==1.0.3
 gTTS==2.5.1
 gunicorn==22.0.0
+Flask==2.3.3
