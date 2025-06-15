@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Video Generator</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        label { display: block; margin: 10px 0 5px; }
+        input, textarea { width: 100%; padding: 8px; margin-bottom: 15px; }
+        button { padding: 10px 20px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #45a049; }
+    </style>
+</head>
+<body>
+    <h1>AI Video Generator</h1>
+    <form method="post" enctype="multipart/form-data">
+        <label for="product_image">Product Image (PNG, JPG, JPEG):</label>
+        <input type="file" id="product_image" name="product_image" accept=".png,.jpg,.jpeg" required>
+
+        <label for="script">Voiceover Script:</label>
+        <textarea id="script" name="script" rows="5" required placeholder="Enter the script for the voiceover..."></textarea>
+
+        <label for="background_image">Background Image (Optional, PNG, JPG, JPEG):</label>
+        <input type="file" id="background_image" name="background_image" accept=".png,.jpg,.jpeg">
+
+        <label for="background_color">Background Color (Optional, default is light gray):</label>
+        <input type="color" id="background_color" name="background_color" value="#D3D3D3">
+
+        <button type="submit">Generate Video</button>
+    </form>
+</body>
+</html>
