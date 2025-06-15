@@ -61,30 +61,32 @@ async def generate_video(
         if os.path.exists(composite_path):
             os.remove(composite_path)
 
-    # Step 2: Generate video with HeyGen v2 API
+    # Step 2: Generate video with HeyGen v2 API - FIXED PAYLOAD STRUCTURE
     headers = {
         "Authorization": f"Bearer {HEYGEN_API_KEY}",
         "X-Api-Key": HEYGEN_API_KEY,
         "Content-Type": "application/json"
     }
 
-    # UPDATED v2 API ENDPOINT AND PAYLOAD
+    # CORRECTED PAYLOAD STRUCTURE WITH VIDEO_INPUTS ARRAY
     create_payload = {
-        "background": composite_url,
-        "ratio": "16:9",
-        "script": {
-            "type": "text",
-            "provider": {
-                "type": "microsoft",
-                "voice_id": "en-US-JennyNeural"
-            },
-            "input": script,
-            "subtitles": False
-        },
-        "avatar": {
+        "video_inputs": [{
+            "type": "avatar",
+            "avatar_id": "b48e1a5d5e3a44ef9ce89f324c088cbc",
             "avatar_style": "normal",
-            "avatar_id": "b48e1a5d5e3a44ef9ce89f324c088cbc"
-        }
+            "background": composite_url,
+            "voice": {
+                "type": "text",
+                "input": script,
+                "provider": {
+                    "type": "microsoft",
+                    "voice_id": "en-US-JennyNeural"
+                }
+            }
+        }],
+        "ratio": "16:9",
+        "test": False,
+        "version": "v2"
     }
 
     # CORRECTED v2 ENDPOINT
