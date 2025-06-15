@@ -1,108 +1,63 @@
-import os
-import time
+from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.responses import FileResponse, JSONResponse
+from moviepy.editor import *
 import requests
-from fastapi import FastAPI, Form, File, UploadFile
-from fastapi.responses import JSONResponse, FileResponse
-from PIL import Image
-import tempfile
-import uuid
-import base64
-from io import BytesIO
-
-# ENV VARS: D-ID_API_KEY and IMGBB_API_KEY
-DID_API_KEY = os.getenv("DID_API_KEY")
-IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
+import os
+from uuid import uuid4
 
 app = FastAPI()
 
-def merge_with_white_background(uploaded_file: UploadFile) -> str:
-    temp_input = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-    temp_input.write(uploaded_file.file.read())
-    temp_input.close()
+PLAYHT_API_KEY = "your_playht_api_key"
+PLAYHT_USER_ID = "your_playht_user_id"
 
-    product_image = Image.open(temp_input.name).convert("RGBA")
-    bg = Image.new("RGBA", (1920, 1080), "white")
-    
-    # Resize product image to fit nicely in frame
-    max_width, max_height = 1000, 800
-    product_image.thumbnail((max_width, max_height))
+OUTPUT_DIR = "videos"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    x = (bg.width - product_image.width) // 2
-    y = (bg.height - product_image.height) // 2
-    bg.paste(product_image, (x, y), product_image)
 
-    merged_path = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
-    bg.convert("RGB").save(merged_path, format="PNG")
-    return merged_path
-
-def upload_to_imgbb(image_path: str) -> str:
-    with open(image_path, "rb") as f:
-        response = requests.post(
-            "https://api.imgbb.com/1/upload",
-            params={"key": IMGBB_API_KEY},
-            files={"image": f}
-        )
-    response.raise_for_status()
-    return response.json()["data"]["url"]
-
-def create_did_presentation(script: str, image_url: str) -> str:
-    """Create a D-ID presentation and return the presentation ID"""
+def generate_voiceover(script_text):
+    url = "https://play.ht/api/v2/tts"
     headers = {
-        "Authorization": f"Bearer {DID_API_KEY}",  # CORRECTED TO BEARER TOKEN
-        "Content-Type": "application/json"
+        "accept": "application/json",
+        "content-type": "application/json",
+        "Authorization": PLAYHT_API_KEY,
+        "X-User-Id": PLAYHT_USER_ID
     }
-    
     payload = {
-        "script": {
-            "type": "text",
-            "input": script,
-            "provider": {
-                "type": "microsoft",
-                "voice_id": "en-US-JennyNeural"
-            }
-        },
-        "config": {
-            "result_format": "mp4"
-        },
-        "source_url": image_url
+        "voice": "en-US-JennyNeural",
+        "content": [script_text],
+        "speed": 1.0,
+        "quality": "high"
     }
-    
-    response = requests.post(
-        "https://api.d-id.com/talks",
-        headers=headers,
-        json=payload
-    )
-    
-    if response.status_code != 201:
-        raise Exception(f"D-ID API error: {response.status_code} - {response.text}")
-    
-    return response.json()["id"]
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code == 200:
+        audio_url = response.json().get("audioUrl")
+        if audio_url:
+            audio_response = requests.get(audio_url)
+            audio_path = f"audio_{uuid4().hex}.mp3"
+            with open(audio_path, "wb") as f:
+                f.write(audio_response.content)
+            return audio_path
+    return None
 
-def get_did_video_url(presentation_id: str) -> str:
-    """Get video URL from D-ID presentation"""
-    headers = {
-        "Authorization": f"Bearer {DID_API_KEY}"  # CORRECTED TO BEARER TOKEN
-    }
+
+def create_video(product_image_path, voiceover_path, product_name):
+    duration = AudioFileClip(voiceover_path).duration
     
-    for _ in range(30):  # 30 attempts * 3 seconds = 90 seconds timeout
-        time.sleep(3)
-        response = requests.get(
-            f"https://api.d-id.com/talks/{presentation_id}",
-            headers=headers
-        )
-        
-        if response.status_code != 200:
-            continue
-            
-        data = response.json()
-        status = data.get("status")
-        
-        if status == "done":
-            return data["result_url"]
-        elif status == "error":
-            raise Exception("D-ID video generation failed")
-    
-    raise Exception("D-ID video generation timed out")
+    image_clip = ImageClip(product_image_path).set_duration(duration).resize(height=720)
+    image_clip = image_clip.set_position("center")
+
+    audio_clip = AudioFileClip(voiceover_path)
+
+    text_clip = TextClip(product_name, fontsize=60, color='white', font='Arial-Bold')\
+        .set_position(('center', 'bottom')).set_duration(duration).margin(bottom=30)
+
+    final = CompositeVideoClip([image_clip, text_clip])
+    final = final.set_audio(audio_clip)
+
+    output_path = os.path.join(OUTPUT_DIR, f"video_{uuid4().hex}.mp4")
+    final.write_videofile(output_path, fps=24)
+    return output_path
+
 
 @app.post("/generate-video")
 async def generate_video(
@@ -110,49 +65,21 @@ async def generate_video(
     script: str = Form(...),
     file: UploadFile = File(...)
 ):
-    # Step 1: Merge product image with white background
-    composite_path = merge_with_white_background(file)
     try:
-        composite_url = upload_to_imgbb(composite_path)
-    except Exception as e:
-        if os.path.exists(composite_path):
-            os.remove(composite_path)
-        return JSONResponse(status_code=500, content={"error": f"Image upload failed: {str(e)}"})
-    finally:
-        if os.path.exists(composite_path):
-            os.remove(composite_path)
+        # Save uploaded image
+        image_path = f"temp_{uuid4().hex}_{file.filename}"
+        with open(image_path, "wb") as f:
+            f.write(await file.read())
 
-    # Step 2: Generate video with D-ID
-    try:
-        presentation_id = create_did_presentation(script, composite_url)
-        video_url = get_did_video_url(presentation_id)
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Video generation failed: {str(e)}"}
-        )
+        # Generate voiceover
+        voiceover_path = generate_voiceover(script)
+        if not voiceover_path:
+            return JSONResponse(status_code=500, content={"error": "Voiceover generation failed"})
 
-    # Step 3: Serve the generated video
-    try:
-        video_response = requests.get(video_url, stream=True)
-        video_response.raise_for_status()
-        
-        # Create a temporary file to store the video
-        temp_video_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
-        with open(temp_video_path, "wb") as f:
-            for chunk in video_response.iter_content(chunk_size=8192):
-                f.write(chunk)
-        
-        return FileResponse(
-            temp_video_path,
-            media_type="video/mp4",
-            filename=f"{product.replace(' ', '_')}_video.mp4"
-        )
+        # Create video
+        video_path = create_video(image_path, voiceover_path, product)
+
+        return FileResponse(video_path, media_type="video/mp4", filename=os.path.basename(video_path))
+
     except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={"error": f"Failed to download video: {str(e)}"}
-        )
-    finally:
-        if temp_video_path and os.path.exists(temp_video_path):
-            os.remove(temp_video_path)
+        return JSONResponse(status_code=500, content={"error": str(e)})
