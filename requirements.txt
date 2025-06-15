@@ -4,5 +4,4 @@ requests
 python-multipart
 aiohttp
 Pillow
-moviepy
-
+moviepy==1.0.3
