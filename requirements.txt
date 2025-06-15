@@ -5,3 +5,5 @@ python-multipart
 aiohttp
 Pillow
 moviepy==1.0.3
+gTTS==2.5.1
+gunicorn==22.0.0
