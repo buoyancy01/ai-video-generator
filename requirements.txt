@@ -3,7 +3,7 @@ uvicorn
 requests
 python-multipart
 aiohttp
-Pillow
+Pillow==9.5.0
 moviepy==1.0.3
 gTTS==2.5.1
 gunicorn==22.0.0
