@@ -5,6 +5,8 @@ from fastapi import FastAPI, Form, File, UploadFile
 from fastapi.responses import JSONResponse, FileResponse
 from PIL import Image
 import tempfile
+import io # Added for image handling, if needed elsewhere in Image.open(io.BytesIO(...))
+import json # Added, as you use json for error details
 
 # ENV VARS: HEYGEN_API_KEY and IMGBB_API_KEY
 HEYGEN_API_KEY = os.getenv("HEYGEN_API_KEY")
@@ -56,7 +58,14 @@ async def generate_video(
     try:
         composite_url = upload_to_imgbb(composite_path)
     except Exception as e:
+        # Clean up temporary file if image upload fails
+        if os.path.exists(composite_path):
+            os.remove(composite_path)
         return JSONResponse(status_code=500, content={"error": f"Image upload failed: {str(e)}"})
+    finally:
+        # Ensure temporary composite image is cleaned up after upload attempt
+        if os.path.exists(composite_path):
+            os.remove(composite_path)
 
     # Step 2: Generate video with HeyGen
     headers = {
@@ -86,32 +95,53 @@ async def generate_video(
 
     if create_response.status_code != 200:
         # Attempt to parse JSON safely
-details = None
-try:
-    details = create_response.json()
-except Exception:
-    details = create_response.text
-return JSONResponse(status_code=500, content={"error": "Failed to create video", "details": details})
+        details = None
+        try:
+            details = create_response.json()
+        except Exception:
+            details = create_response.text
+        return JSONResponse(status_code=500, content={"error": "Failed to create video", "details": details})
 
     video_id = create_response.json().get("video_id")
     status_url = f"https://api.heygen.com/v1/videos/{video_id}"
 
-    for _ in range(30):
+    video_url = None # Initialize video_url
+    for _ in range(30): # Check for 90 seconds max (30 * 3-second sleep)
         time.sleep(3)
         status_response = requests.get(status_url, headers=headers)
         if status_response.status_code != 200:
-            continue
-
+            print(f"HeyGen status check failed with status code {status_response.status_code}: {status_response.text}")
+            continue # Continue loop on error
+        
         status_data = status_response.json()
         if status_data.get("status") == "completed":
             video_url = status_data.get("video_url")
             break
-    else:
+        elif status_data.get("status") == "failed":
+            return JSONResponse(status_code=500, content={"error": "Video generation failed at HeyGen", "details": status_data})
+        
+        print(f"HeyGen video status: {status_data.get('status')}. Retrying...")
+    else: # This else block executes if the for loop completes without a 'break'
         return JSONResponse(status_code=500, content={"error": "Video generation timed out"})
 
-    video_response = requests.get(video_url)
-    temp_video_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
-    with open(temp_video_path, "wb") as f:
-        f.write(video_response.content)
+    if not video_url: # Handle case where loop finishes but no video_url was found
+        return JSONResponse(status_code=500, content={"error": "Video URL not found after generation attempt."})
 
-    return FileResponse(temp_video_path, media_type="video/mp4", filename="marketing_video.mp4")
+    # Step 3: Serve the generated video
+    temp_video_path = None # Initialize outside try for finally block
+    try:
+        video_response = requests.get(video_url, stream=True) # Use stream to handle large files
+        video_response.raise_for_status()
+
+        temp_video_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
+        with open(temp_video_path, "wb") as f:
+            for chunk in video_response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        
+        return FileResponse(temp_video_path, media_type="video/mp4", filename="marketing_video.mp4")
+    except requests.exceptions.RequestException as e:
+        return JSONResponse(status_code=500, content={"error": f"Failed to download generated video: {str(e)}"})
+    finally:
+        # Clean up temporary video file after sending response
+        if temp_video_path and os.path.exists(temp_video_path):
+            os.remove(temp_video_path)
