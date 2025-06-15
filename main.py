@@ -61,14 +61,14 @@ async def generate_video(
         if os.path.exists(composite_path):
             os.remove(composite_path)
 
-    # Step 2: Generate video with HeyGen v2 API - FIXED PAYLOAD STRUCTURE
+    # Step 2: Generate video with HeyGen v2 API - FIXED VOICE SETTINGS
     headers = {
         "Authorization": f"Bearer {HEYGEN_API_KEY}",
         "X-Api-Key": HEYGEN_API_KEY,
         "Content-Type": "application/json"
     }
 
-    # CORRECTED PAYLOAD STRUCTURE WITH VIDEO_INPUTS ARRAY
+    # CORRECTED PAYLOAD WITH PROPER VOICE SETTINGS
     create_payload = {
         "video_inputs": [{
             "type": "avatar",
@@ -78,9 +78,8 @@ async def generate_video(
             "voice": {
                 "type": "text",
                 "input": script,
-                "provider": {
-                    "type": "microsoft",
-                    "voice_id": "en-US-JennyNeural"
+                "voice_settings": {
+                    "voice_id": "en-US-JennyNeural"  # MOVED TO CORRECT LOCATION
                 }
             }
         }],
@@ -89,7 +88,6 @@ async def generate_video(
         "version": "v2"
     }
 
-    # CORRECTED v2 ENDPOINT
     create_response = requests.post(
         "https://api.heygen.com/v2/video/generate",
         headers=headers,
