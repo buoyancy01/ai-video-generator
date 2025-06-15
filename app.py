@@ -3,12 +3,21 @@ import uuid
 from flask import Flask, request, render_template, send_file, g
 from gtts import gTTS
 from moviepy.editor import ImageClip, AudioFileClip, ColorClip, CompositeVideoClip
+from flask import send_from_directory
 
 app = Flask(__name__, template_folder='.')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/static/styles.css')
+def serve_css():
+    return send_from_directory('.', 'styles.css')
+
+@app.route('/static/scripts.js')
+def serve_js():
+    return send_from_directory('.', 'scripts.js')
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
