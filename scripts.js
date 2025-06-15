@@ -3,12 +3,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const bgTypeRadios = document.querySelectorAll('input[name="bg-type"]');
     bgTypeRadios.forEach(radio => {
         radio.addEventListener('change', function() {
+            const bgImageUpload = document.getElementById('bg-image-upload');
+            const bgColorSelect = document.getElementById('bg-color-select');
             if (this.value === 'image') {
-                document.getElementById('bg-image-upload').style.display = 'block';
-                document.getElementById('bg-color-select').style.display = 'none';
+                bgImageUpload.style.display = 'block';
+                bgColorSelect.style.display = 'none';
             } else {
-                document.getElementById('bg-image-upload').style.display = 'none';
-                document.getElementById('bg-color-select').style.display = 'block';
+                bgImageUpload.style.display = 'none';
+                bgColorSelect.style.display = 'block';
             }
         });
     });
@@ -28,7 +30,7 @@ document.addEventListener('DOMContentLoaded', function() {
             reader.onload = function(e) {
                 productPreview.src = e.target.result;
                 productPreview.style.display = 'block';
-            }
+            };
             reader.readAsDataURL(this.files[0]);
         }
     });
@@ -52,12 +54,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const file = e.dataTransfer.files[0];
         if (file && ['image/png', 'image/jpeg'].includes(file.type)) {
             productImageInput.files = e.dataTransfer.files;
-            
             const reader = new FileReader();
             reader.onload = function(e) {
                 productPreview.src = e.target.result;
                 productPreview.style.display = 'block';
-            }
+            };
             reader.readAsDataURL(file);
         }
     });
@@ -72,7 +73,7 @@ document.addEventListener('DOMContentLoaded', function() {
             reader.onload = function(e) {
                 bgPreview.src = e.target.result;
                 bgPreview.style.display = 'block';
-            }
+            };
             reader.readAsDataURL(this.files[0]);
         }
     });
@@ -96,4 +97,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Show loading spinner on form submit
-    document.getElementById('video-form').addEventListener('submit', function()GARFIELD: The Cat, this is not a supported user prompt. Please provide a valid question or command.
+    document.getElementById('video-form').addEventListener('submit', function() {
+        document.getElementById('loading').style.display = 'flex';
+        document.getElementById('video-preview').style.display = 'none';
+    });
+});
