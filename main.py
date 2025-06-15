@@ -1,85 +1,79 @@
-from fastapi import FastAPI, UploadFile, File, Form
-from fastapi.responses import FileResponse, JSONResponse
-from moviepy.editor import *
-import requests
 import os
-from uuid import uuid4
+import shutil
+from flask import Flask, request, render_template, send_file
+from gtts import gTTS
+from moviepy.editor import ImageClip, AudioFileClip, ColorClip, CompositeVideoClip
 
-app = FastAPI()
+app = Flask(__name__)
+UPLOAD_FOLDER = 'uploads'
+OUTPUT_FOLDER = 'outputs'
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg'}
 
-PLAYHT_API_KEY = "your_playht_api_key"
-PLAYHT_USER_ID = "your_playht_user_id"
+# Ensure upload and output directories exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-OUTPUT_DIR = "videos"
-os.makedirs(OUTPUT_DIR, exist_ok=True)
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if request.method == 'POST':
+        # Get form data
+        product_image = request.files.get('product_image')
+        script = request.form.get('script')
+        background_image = request.files.get('background_image')
+        background_color = request.form.get('background_color', '#D3D3D3')  # Default light gray
 
-def generate_voiceover(script_text):
-    url = "https://play.ht/api/v2/tts"
-    headers = {
-        "accept": "application/json",
-        "content-type": "application/json",
-        "Authorization": PLAYHT_API_KEY,
-        "X-User-Id": PLAYHT_USER_ID
-    }
-    payload = {
-        "voice": "en-US-JennyNeural",
-        "content": [script_text],
-        "speed": 1.0,
-        "quality": "high"
-    }
-    response = requests.post(url, json=payload, headers=headers)
-    if response.status_code == 200:
-        audio_url = response.json().get("audioUrl")
-        if audio_url:
-            audio_response = requests.get(audio_url)
-            audio_path = f"audio_{uuid4().hex}.mp3"
-            with open(audio_path, "wb") as f:
-                f.write(audio_response.content)
-            return audio_path
-    return None
+        if not product_image or not script:
+            return "Please upload a product image and enter a script.", 400
 
+        if not allowed_file(product_image.filename):
+            return "Invalid product image format. Use PNG, JPG, or JPEG.", 400
 
-def create_video(product_image_path, voiceover_path, product_name):
-    duration = AudioFileClip(voiceover_path).duration
-    
-    image_clip = ImageClip(product_image_path).set_duration(duration).resize(height=720)
-    image_clip = image_clip.set_position("center")
-
-    audio_clip = AudioFileClip(voiceover_path)
-
-    text_clip = TextClip(product_name, fontsize=60, color='white', font='Arial-Bold')\
-        .set_position(('center', 'bottom')).set_duration(duration).margin(bottom=30)
-
-    final = CompositeVideoClip([image_clip, text_clip])
-    final = final.set_audio(audio_clip)
-
-    output_path = os.path.join(OUTPUT_DIR, f"video_{uuid4().hex}.mp4")
-    final.write_videofile(output_path, fps=24)
-    return output_path
-
-
-@app.post("/generate-video")
-async def generate_video(
-    product: str = Form(...),
-    script: str = Form(...),
-    file: UploadFile = File(...)
-):
-    try:
-        # Save uploaded image
-        image_path = f"temp_{uuid4().hex}_{file.filename}"
-        with open(image_path, "wb") as f:
-            f.write(await file.read())
+        # Save uploaded files
+        product_path = os.path.join(UPLOAD_FOLDER, 'product.' + product_image.filename.rsplit('.', 1)[1].lower())
+        product_image.save(product_path)
 
         # Generate voiceover
-        voiceover_path = generate_voiceover(script)
-        if not voiceover_path:
-            return JSONResponse(status_code=500, content={"error": "Voiceover generation failed"})
+        tts = gTTS(text=script, lang='en')
+        audio_path = os.path.join(OUTPUT_FOLDER, 'voiceover.mp3')
+        tts.save(audio_path)
 
-        # Create video
-        video_path = create_video(image_path, voiceover_path, product)
+        # Load audio
+        audio = AudioFileClip(audio_path)
 
-        return FileResponse(video_path, media_type="video/mp4", filename=os.path.basename(video_path))
+        # Set video dimensions
+        video_size = (1080, 1080)
 
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        # Handle background
+        if background_image and allowed_file(background_image.filename):
+            bg_path = os.path.join(UPLOAD_FOLDER, 'background.' + background_image.filename.rsplit('.', 1)[1].lower())
+            background_image.save(bg_path)
+            background = ImageClip(bg_path).set_duration(audio.duration).resize(video_size)
+        else:
+            background = ColorClip(size=video_size, color=[int(background_color[1:3], 16), 
+                                                            int(background_color[3:5], 16), 
+                                                            int(background_color[5:7], 16)]).set_duration(audio.duration)
+
+        # Load and resize product image
+        product = ImageClip(product_path).set_duration(audio.duration).resize(width=int(video_size[0] * 0.8))
+        product = product.set_position(('center', 'center'))
+
+        # Composite video
+        video = CompositeVideoClip([background, product], size=video_size).set_audio(audio)
+        output_path = os.path.join(OUTPUT_FOLDER, 'output.mp4')
+        video.write_videofile(output_path, fps=24, codec='libx264', audio_codec='aac')
+
+        # Clean up temporary files
+        shutil.rmtree(UPLOAD_FOLDER)
+        os.remove(audio_path)
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+        # Send file for download
+        return send_file(output_path, as_attachment=True, download_name='marketing_video.mp4')
+
+    return render_template('index.html')
+
+if __name__ == '__main__':
+    app.run(debug=True)
