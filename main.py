@@ -5,10 +5,12 @@ from fastapi import FastAPI, Form, File, UploadFile
 from fastapi.responses import JSONResponse, FileResponse
 from PIL import Image
 import tempfile
-import io
+import uuid
+import base64
+from io import BytesIO
 
-# ENV VARS: HEYGEN_API_KEY and IMGBB_API_KEY
-HEYGEN_API_KEY = os.getenv("HEYGEN_API_KEY")
+# ENV VARS: D-ID_API_KEY and IMGBB_API_KEY
+DID_API_KEY = os.getenv("DID_API_KEY")
 IMGBB_API_KEY = os.getenv("IMGBB_API_KEY")
 
 app = FastAPI()
@@ -43,6 +45,66 @@ def upload_to_imgbb(image_path: str) -> str:
     response.raise_for_status()
     return response.json()["data"]["url"]
 
+def create_did_presentation(script: str, image_url: str) -> str:
+    """Create a D-ID presentation and return the presentation ID"""
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f':{DID_API_KEY}'.encode()).decode()}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "script": {
+            "type": "text",
+            "input": script,
+            "provider": {
+                "type": "microsoft",
+                "voice_id": "en-US-JennyNeural"
+            }
+        },
+        "config": {
+            "result_format": "mp4"
+        },
+        "source_url": image_url,
+        "webhook": ""  # Not needed for immediate sync
+    }
+    
+    response = requests.post(
+        "https://api.d-id.com/talks",
+        headers=headers,
+        json=payload
+    )
+    
+    if response.status_code != 201:
+        raise Exception(f"D-ID API error: {response.status_code} - {response.text}")
+    
+    return response.json()["id"]
+
+def get_did_video_url(presentation_id: str) -> str:
+    """Get video URL from D-ID presentation"""
+    headers = {
+        "Authorization": f"Basic {base64.b64encode(f':{DID_API_KEY}'.encode()).decode()}"
+    }
+    
+    for _ in range(30):  # 30 attempts * 3 seconds = 90 seconds timeout
+        time.sleep(3)
+        response = requests.get(
+            f"https://api.d-id.com/talks/{presentation_id}",
+            headers=headers
+        )
+        
+        if response.status_code != 200:
+            continue
+            
+        data = response.json()
+        status = data.get("status")
+        
+        if status == "done":
+            return data["result_url"]
+        elif status == "error":
+            raise Exception("D-ID video generation failed")
+    
+    raise Exception("D-ID video generation timed out")
+
 @app.post("/generate-video")
 async def generate_video(
     product: str = Form(...),
@@ -61,111 +123,24 @@ async def generate_video(
         if os.path.exists(composite_path):
             os.remove(composite_path)
 
-    # Step 2: Generate video with HeyGen v2 API - FIXED VOICE SETTINGS
-    headers = {
-        "Authorization": f"Bearer {HEYGEN_API_KEY}",
-        "X-Api-Key": HEYGEN_API_KEY,
-        "Content-Type": "application/json"
-    }
-
-    # CORRECTED PAYLOAD WITH PROPER VOICE SETTINGS
-    create_payload = {
-        "video_inputs": [{
-            "type": "avatar",
-            "avatar_id": "b48e1a5d5e3a44ef9ce89f324c088cbc",
-            "avatar_style": "normal",
-            "background": composite_url,
-            "voice": {
-                "type": "text",
-                "input": script,
-                "voice_settings": {
-                    "voice_id": "en-US-JennyNeural"  # MOVED TO CORRECT LOCATION
-                }
-            }
-        }],
-        "ratio": "16:9",
-        "test": False,
-        "version": "v2"
-    }
-
-    create_response = requests.post(
-        "https://api.heygen.com/v2/video/generate",
-        headers=headers,
-        json=create_payload
-    )
-
-    if create_response.status_code != 200:
-        try:
-            details = create_response.json()
-        except Exception:
-            details = create_response.text
+    # Step 2: Generate video with D-ID
+    try:
+        presentation_id = create_did_presentation(script, composite_url)
+        video_url = get_did_video_url(presentation_id)
+    except Exception as e:
         return JSONResponse(
             status_code=500,
-            content={
-                "error": "Failed to create video",
-                "details": details,
-                "api_endpoint": "https://api.heygen.com/v2/video/generate",
-                "status_code": create_response.status_code
-            }
-        )
-
-    # Parse v2 response format
-    response_data = create_response.json()
-    video_id = response_data.get("data", {}).get("video_id")
-    if not video_id:
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Video ID not found in response", "details": response_data}
-        )
-
-    # UPDATED v2 STATUS ENDPOINT
-    status_url = f"https://api.heygen.com/v2/video/generate/status?video_id={video_id}"
-    
-    video_url = None
-    for i in range(30):  # 30 attempts * 3 seconds = 90 seconds timeout
-        time.sleep(3)
-        status_response = requests.get(status_url, headers=headers)
-        
-        if status_response.status_code != 200:
-            print(f"Status check failed ({i+1}/30): {status_response.status_code} - {status_response.text}")
-            continue
-
-        status_data = status_response.json()
-        video_status = status_data.get("data", {}).get("status")
-        
-        if video_status == "completed":
-            video_url = status_data.get("data", {}).get("video_url")
-            break
-        elif video_status == "failed":
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "error": "Video generation failed",
-                    "details": status_data.get("data", {})
-                }
-            )
-        
-        print(f"Status ({i+1}/30): {video_status}")
-
-    if not video_url:
-        return JSONResponse(
-            status_code=500,
-            content={"error": "Video generation timed out after 90 seconds"}
+            content={"error": f"Video generation failed: {str(e)}"}
         )
 
     # Step 3: Serve the generated video
-    temp_video_path = None
     try:
         video_response = requests.get(video_url, stream=True)
         video_response.raise_for_status()
-
-        temp_video_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4").name
-        with open(temp_video_path, "wb") as f:
-            for chunk in video_response.iter_content(chunk_size=8192):
-                f.write(chunk)
         
+        # Stream video directly to client
         return FileResponse(
-            temp_video_path,
+            BytesIO(video_response.content),
             media_type="video/mp4",
             filename=f"{product.replace(' ', '_')}_video.mp4"
         )
@@ -174,6 +149,3 @@ async def generate_video(
             status_code=500,
             content={"error": f"Failed to download video: {str(e)}"}
         )
-    finally:
-        if temp_video_path and os.path.exists(temp_video_path):
-            os.remove(temp_video_path)
