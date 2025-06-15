@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Video Generator | Create Stunning Videos</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Montserrat:wght@700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6a11cb;
+            --primary-gradient: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+            --secondary: #ff3e9d;
+            --dark: #0f172a;
+            --light: #f8fafc;
+            --gray: #64748b;
+            --light-gray: #e2e8f0;
+            --card-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            background-color: #f0f4f8;
+            color: var(--dark);
+            min-height: 100vh;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e7f4 100%);
+            background-attachment: fixed;
+            padding-bottom: 40px;
+        }
+
+        header {
+            background: var(--primary-gradient);
+            color: white;
+            padding: 1.5rem 0;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        header::before {
+            content: "";
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%);
+            transform: rotate(30deg);
+            pointer-events: none;
+        }
+
+        h1 {
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 800;
+            font-size: 2.8rem;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.5px;
+        }
+
+        header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .container {
+            max-width: 1200px;
+        }
+
+        .card {
+            border: none;
+            border-radius: 16px;
+            box-shadow: var(--card-shadow);
+            overflow: hidden;
+            transition: var(--transition);
+            background: white;
+            margin-bottom: 1.5rem;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-title {
+            font-family: 'Montserrat', sans-serif;
+            font-weight: 700;
+            color: var(--primary);
+            margin-bottom: 1.2rem;
+            font-size: 1.4rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-title i {
+            background: var(--primary-gradient);
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1rem;
+        }
+
+        #drop-area {
+            border: 2px dashed var(--light-gray);
+            border-radius: 12px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: var(--transition);
+            background: rgba(106, 17, 203, 0.03);
+            position: relative;
+            overflow: hidden;
+        }
+
+        #drop-area:hover {
+            border-color: var(--primary);
+            background: rgba(106, 17, 203, 0.05);
+        }
+
+        #drop-area i {
+            font-size: 3rem;
+            color: var(--primary);
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        #drop-area p {
+            color: var(--gray);
+            margin: 0;
+        }
+
+        .form-control, .form-control:focus {
+            border: 2px solid var(--light-gray);
+            border-radius: 12px;
+            padding: 0.8rem 1rem;
+            box-shadow: none;
+            transition: var(--transition);
+        }
+
+        .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(106, 17, 203, 0.2);
+        }
+
+        textarea.form-control {
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        .form-check {
+            margin-bottom: 0.5rem;
+        }
+
+        .form-check-input {
+            width: 1.2em;
+            height: 1.2em;
+            margin-top: 0.2em;
+        }
+
+        .form-check-input:checked {
+            background-color: var(--primary);
+            border-color: var(--primary);
+        }
+
+        .form-check-label {
+            font-weight: 500;
+        }
+
+        .btn-primary {
+            background: var(--primary-gradient);
+            border: none;
+            padding: 0.9rem;
+            font-weight: 600;
+            border-radius: 12px;
+            transition: var(--transition);
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            font-size: 1.1rem;
+            position: relative;
+            overflow: hidden;
+            z-index: 1;
+        }
+
+        .btn-primary::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 0;
+            height: 100%;
+            background: linear-gradient(135deg, #2575fc 0%, #6a11cb 100%);
+            transition: all 0.5s ease;
+            z-index: -1;
+        }
+
+        .btn-primary:hover::before {
+            width: 100%;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(106, 17, 203, 0.3);
+        }
+
+        #video-preview {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 300px;
+            border-radius: 12px;
+            background: rgba(106, 17, 203, 0.03);
+            border: 2px dashed var(--light-gray);
+            margin-top: 1rem;
+            transition: var(--transition);
+        }
+
+        #video-preview.has-video {
+            background: white;
+            border: none;
+            min-height: 400px;
+        }
+
+        #video-preview-placeholder {
+            text-align: center;
+            color: var(--gray);
+        }
+
+        #video-preview-placeholder i {
+            font-size: 4rem;
+            color: var(--primary);
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        #video-preview video {
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        #loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 300px;
+            text-align: center;
+        }
+
+        .spinner-border {
+            width: 4rem;
+            height: 4rem;
+            border-width: 0.25em;
+            margin-bottom: 1.5rem;
+            color: var(--primary);
+        }
+
+        #loading p {
+            font-size: 1.2rem;
+            font-weight: 500;
+            color: var(--gray);
+        }
+
+        .preview-container {
+            position: relative;
+            width: 100%;
+        }
+
+        .preview-image {
+            width: 100%;
+            max-height: 200px;
+            object-fit: contain;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .bg-preview {
+            width: 100%;
+            height: 60px;
+            border-radius: 8px;
+            margin-top: 10px;
+            display: none;
+        }
+
+        .color-preview {
+            width: 100%;
+            height: 60px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .feature-badge {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: var(--secondary);
+            color: white;
+            padding: 6px 15px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem 0;
+            color: var(--gray);
+            font-size: 0.9rem;
+        }
+
+        .ai-power {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            background: rgba(106, 17, 203, 0.1);
+            padding: 4px 12px;
+            border-radius: 20px;
+            color: var(--primary);
+            font-weight: 500;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2.2rem;
+            }
+            
+            .card-title {
+                font-size: 1.2rem;
+            }
+            
+            .row {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="text-center py-4">
+        <div class="container">
+            <h1>AI Video Generator</h1>
+            <p>Create professional marketing videos in seconds with AI</p>
+            <span class="feature-badge">NEW: AI-Powered Video Creation</span>
+        </div>
+    </header>
+
+    <main class="container my-5">
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <form method="post" enctype="multipart/form-data" id="video-form">
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h2 class="card-title"><i class="fas fa-cloud-upload-alt"></i>Upload Product Image</h2>
+                            <div id="drop-area" class="p-3">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                                <p>Drag and drop your image here or click to select</p>
+                                <p class="small text-muted">Supports JPG, PNG (Max 5MB)</p>
+                                <input type="file" id="product_image" name="product_image" accept=".png,.jpg,.jpeg" style="display: none;">
+                            </div>
+                            <img id="product-preview" class="preview-image" alt="Product preview">
+                        </div>
+                    </div>
+                    
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h2 class="card-title"><i class="fas fa-comment-dots"></i>Enter Voiceover Script</h2>
+                            <textarea class="form-control" id="script" name="script" rows="5" placeholder="Type your script here..."></textarea>
+                            <div class="mt-2 text-end">
+                                <small class="text-muted"><span id="char-count">0</span>/500 characters</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h2 class="card-title"><i class="fas fa-image"></i>Choose Background</h2>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="bg-type" id="bg-image" value="image">
+                                <label class="form-check-label" for="bg-image">Upload Background Image</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="bg-type" id="bg-color" value="color" checked>
+                                <label class="form-check-label" for="bg-color">Select Background Color</label>
+                            </div>
+                            
+                            <div id="bg-image-upload" style="display: none;" class="mt-3">
+                                <input type="file" class="form-control" id="background_image" name="background_image" accept=".png,.jpg,.jpeg">
+                                <img id="bg-preview" class="preview-image" alt="Background preview">
+                            </div>
+                            
+                            <div id="bg-color-select" class="mt-3">
+                                <label class="form-label">Select a color:</label>
+                                <div class="d-flex align-items-center gap-3">
+                                    <input type="color" class="form-control form-control-color" id="background_color" name="background_color" value="#D3D3D3">
+                                    <div id="color-value" class="text-muted">#D3D3D3</div>
+                                </div>
+                                <div id="color-preview" class="color-preview" style="background-color: #D3D3D3;"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" id="generate-btn" class="btn btn-primary w-100 py-3">
+                        <i class="fas fa-bolt me-2"></i>Generate Video
+                    </button>
+                </form>
+            </div>
+            
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h2 class="card-title"><i class="fas fa-film"></i>Your Generated Video</h2>
+                        
+                        <div id="video-preview">
+                            <div id="video-preview-placeholder">
+                                <i class="fas fa-video"></i>
+                                <h4>Your video will appear here</h4>
+                                <p class="text-muted">Generate a video to see the preview</p>
+                            </div>
+                        </div>
+                        
+                        <div id="loading" style="display: none;">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p>Generating your video...</p>
+                            <p class="text-muted mt-2">This usually takes 20-40 seconds</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="container">
+        <p>© 2023 AI Video Generator. All rights reserved.</p>
+        <p class="mt-2"><span class="ai-power"><i class="fas fa-brain"></i> Powered by DeepSeek AI</span></p>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Handle background type selection
+            const bgTypeRadios = document.querySelectorAll('input[name="bg-type"]');
+            bgTypeRadios.forEach(radio => {
+                radio.addEventListener('change', function() {
+                    if (this.value === 'image') {
+                        document.getElementById('bg-image-upload').style.display = 'block';
+                        document.getElementById('bg-color-select').style.display = 'none';
+                    } else {
+                        document.getElementById('bg-image-upload').style.display = 'none';
+                        document.getElementById('bg-color-select').style.display = 'block';
+                    }
+                });
+            });
+
+            // Handle drag and drop for product image
+            const dropArea = document.getElementById('drop-area');
+            const productImageInput = document.getElementById('product_image');
+            const productPreview = document.getElementById('product-preview');
+            
+            dropArea.addEventListener('click', function() {
+                productImageInput.click();
+            });
+            
+            productImageInput.addEventListener('change', function() {
+                if (this.files && this.files[0]) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        productPreview.src = e.target.result;
+                        productPreview.style.display = 'block';
+                    }
+                    reader.readAsDataURL(this.files[0]);
+                }
+            });
+            
+            dropArea.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                this.style.borderColor = '#6a11cb';
+                this.style.backgroundColor = 'rgba(106, 17, 203, 0.1)';
+            });
+            
+            dropArea.addEventListener('dragleave', function() {
+                this.style.borderColor = '#e2e8f0';
+                this.style.backgroundColor = 'rgba(106, 17, 203, 0.03)';
+            });
+            
+            dropArea.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.style.borderColor = '#e2e8f0';
+                this.style.backgroundColor = 'rgba(106, 17, 203, 0.03)';
+                
+                const file = e.dataTransfer.files[0];
+                if (file && ['image/png', 'image/jpeg'].includes(file.type)) {
+                    productImageInput.files = e.dataTransfer.files;
+                    
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        productPreview.src = e.target.result;
+                        productPreview.style.display = 'block';
+                    }
+                    reader.readAsDataURL(file);
+                }
+            });
+
+            // Background image preview
+            const bgImageInput = document.getElementById('background_image');
+            const bgPreview = document.getElementById('bg-preview');
+            
+            bgImageInput.addEventListener('change', function() {
+                if (this.files && this.files[0]) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        bgPreview.src = e.target.result;
+                        bgPreview.style.display = 'block';
+                    }
+                    reader.readAsDataURL(this.files[0]);
+                }
+            });
+
+            // Background color preview
+            const bgColorInput = document.getElementById('background_color');
+            const colorPreview = document.getElementById('color-preview');
+            const colorValue = document.getElementById('color-value');
+            
+            bgColorInput.addEventListener('input', function() {
+                colorPreview.style.backgroundColor = this.value;
+                colorValue.textContent = this.value;
+            });
+
+            // Character counter for textarea
+            const scriptTextarea = document.getElementById('script');
+            const charCount = document.getElementById('char-count');
+            
+            scriptTextarea.addEventListener('input', function() {
+                charCount.textContent = this.value.length;
+            });
+
+            // Show loading spinner on form submit
+            document.getElementById('video-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                document.getElementById('loading').style.display = 'flex';
+                document.getElementById('video-preview').style.display = 'none';
+                
+                // Simulate video generation (in a real app, this would be an API call)
+                setTimeout(function() {
+                    document.getElementById('loading').style.display = 'none';
+                    
+                    const videoPreview = document.getElementById('video-preview');
+                    videoPreview.innerHTML = `
+                        <video controls>
+                            <source src="#" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video>
+                        <div class="mt-4 text-center">
+                            <button class="btn btn-primary me-2"><i class="fas fa-download me-2"></i>Download Video</button>
+                            <button class="btn btn-outline-primary"><i class="fas fa-redo me-2"></i>Regenerate</button>
+                        </div>
+                    `;
+                    videoPreview.classList.add('has-video');
+                    videoPreview.style.display = 'block';
+                }, 3500);
+            });
+        });
+    </script>
+</body>
+</html>
