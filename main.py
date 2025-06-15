@@ -85,7 +85,13 @@ async def generate_video(
     )
 
     if create_response.status_code != 200:
-        return JSONResponse(status_code=500, content={"error": "Failed to create video", "details": create_response.json()})
+        # Attempt to parse JSON safely
+details = None
+try:
+    details = create_response.json()
+except Exception:
+    details = create_response.text
+return JSONResponse(status_code=500, content={"error": "Failed to create video", "details": details})
 
     video_id = create_response.json().get("video_id")
     status_url = f"https://api.heygen.com/v1/videos/{video_id}"
