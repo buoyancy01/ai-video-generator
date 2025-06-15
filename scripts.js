@@ -15,28 +15,85 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Handle drag and drop for product image
     const dropArea = document.getElementById('drop-area');
+    const productImageInput = document.getElementById('product_image');
+    const productPreview = document.getElementById('product-preview');
+    
     dropArea.addEventListener('click', function() {
-        document.getElementById('product_image').click();
+        productImageInput.click();
     });
+    
+    productImageInput.addEventListener('change', function() {
+        if (this.files && this.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                productPreview.src = e.target.result;
+                productPreview.style.display = 'block';
+            }
+            reader.readAsDataURL(this.files[0]);
+        }
+    });
+    
     dropArea.addEventListener('dragover', function(e) {
         e.preventDefault();
-        this.style.borderColor = '#3498db';
+        this.style.borderColor = '#6a11cb';
+        this.style.backgroundColor = 'rgba(106, 17, 203, 0.1)';
     });
+    
     dropArea.addEventListener('dragleave', function() {
-        this.style.borderColor = '#ccc';
+        this.style.borderColor = '#e2e8f0';
+        this.style.backgroundColor = 'rgba(106, 17, 203, 0.03)';
     });
+    
     dropArea.addEventListener('drop', function(e) {
         e.preventDefault();
-        this.style.borderColor = '#ccc';
+        this.style.borderColor = '#e2e8f0';
+        this.style.backgroundColor = 'rgba(106, 17, 203, 0.03)';
+        
         const file = e.dataTransfer.files[0];
         if (file && ['image/png', 'image/jpeg'].includes(file.type)) {
-            document.getElementById('product_image').files = e.dataTransfer.files;
-            // Optionally, display the file name or a preview
+            productImageInput.files = e.dataTransfer.files;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                productPreview.src = e.target.result;
+                productPreview.style.display = 'block';
+            }
+            reader.readAsDataURL(file);
         }
     });
 
-    // Show loading spinner on form submit
-    document.querySelector('form').addEventListener('submit', function() {
-        document.getElementById('loading').style.display = 'block';
+    // Background image preview
+    const bgImageInput = document.getElementById('background_image');
+    const bgPreview = document.getElementById('bg-preview');
+    
+    bgImageInput.addEventListener('change', function() {
+        if (this.files && this.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                bgPreview.src = e.target.result;
+                bgPreview.style.display = 'block';
+            }
+            reader.readAsDataURL(this.files[0]);
+        }
     });
-});
+
+    // Background color preview
+    const bgColorInput = document.getElementById('background_color');
+    const colorPreview = document.getElementById('color-preview');
+    const colorValue = document.getElementById('color-value');
+    
+    bgColorInput.addEventListener('input', function() {
+        colorPreview.style.backgroundColor = this.value;
+        colorValue.textContent = this.value;
+    });
+
+    // Character counter for textarea
+    const scriptTextarea = document.getElementById('script');
+    const charCount = document.getElementById('char-count');
+    
+    scriptTextarea.addEventListener('input', function() {
+        charCount.textContent = this.value.length;
+    });
+
+    // Show loading spinner on form submit
+    document.getElementById('video-form').addEventListener('submit', function()GARFIELD: The Cat, this is not a supported user prompt. Please provide a valid question or command.
